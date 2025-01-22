@@ -1,0 +1,124 @@
+SELECT *
+FROM [Portfolio Project]..CovidDeaths
+WHERE continent IS NOT NULL
+ORDER BY 3,4
+
+--SELECT *
+--FROM [Portfolio Project]..CovidVaccinations
+--ORDER BY 3,4
+
+-- Select data we're going to be using
+
+SELECT location, date, total_cases, new_cases, total_deaths, population
+FROM [Portfolio Project]..CovidDeaths
+ORDER BY 1,2
+
+-- Looking at the Total Cases vs Total Deaths
+-- Shows likelyhood of dying if you contract COVID in your country
+SELECT location, date, total_cases, (total_deaths/total_cases)*100 as DeathPercentage
+FROM [Portfolio Project]..CovidDeaths
+WHERE location =  'Argentina'
+ORDER BY 1,2
+
+-- Looking at Total Cases vs Population
+
+SELECT location, date, population, total_cases, (total_cases/population)*100 as DeathPercentage
+FROM [Portfolio Project]..CovidDeaths
+WHERE location =  'Argentina'
+ORDER BY 1,2
+
+-- Looking at countries with the highest Infection Rate compared to Population
+
+SELECT location, population, MAX(total_cases) AS HighestInfectionCount, MAX((total_cases/population))*100 AS InfectionRate
+FROM [Portfolio Project]..CovidDeaths
+GROUP BY location, population
+ORDER BY InfectionRate DESC
+
+-- Looking at Countries with highest Death Count per Population
+
+SELECT location, MAX(cast(total_deaths as int)) AS HighestDeathCount, MAX((total_deaths/population))*100 AS DeathRate
+FROM [Portfolio Project]..CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY location
+ORDER BY HighestDeathCount DESC
+
+SELECT continent, MAX(cast(total_deaths as int)) AS HighestDeathCount, MAX((total_deaths/population))*100 AS DeathRate
+FROM [Portfolio Project]..CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY continent
+ORDER BY HighestDeathCount DESC
+
+
+-- Showing the continents with the highest death count
+
+SELECT continent, MAX(cast(total_deaths as int)) AS HighestDeathCount, MAX((total_deaths/population))*100 AS DeathRate
+FROM [Portfolio Project]..CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY continent
+ORDER BY HighestDeathCount DESC
+
+
+-- GLOBAL NUMBERS
+
+SELECT SUM(new_cases) AS total_cases, SUM(cast(new_deaths as int)) AS total_deaths, (SUM(cast(new_deaths as int))/SUM(new_cases))*100 as DeathPercentage
+FROM [Portfolio Project]..CovidDeaths
+WHERE continent IS NOT NULL
+-- GROUP BY date
+ORDER BY 1,2
+
+-- USING CTE
+
+WITH PopVsVac (continent, location, date, population, new_vaccinations, RollingPeopleVaccinated)
+AS
+(
+SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations, SUM(cast(v.new_vaccinations as int)) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS RollingPeopleVaccinated
+FROM [Portfolio Project]..CovidDeaths AS d
+JOIN [Portfolio Project]..CovidVaccinations AS v
+	ON d.location = v.location
+	and d.date = v.date
+WHERE d.continent IS NOT NULL
+-- ORDER BY 2,3
+)
+SELECT *, (RollingPeopleVaccinated/population)*100 AS AccumulatedVaccinationRate
+FROM PopVsVac
+
+
+-- USING TEMP TABLE
+
+DROP TABLE IF EXISTS #PercentPopulationVaccinated
+CREATE TABLE #PercentPopulationVaccinated
+(
+Continent nvarchar(255),
+Location nvarchar(255),
+Date datetime,
+Population numeric,
+New_vaccinations numeric,
+RollingPeopleVaccinated numeric
+)
+
+
+INSERT INTO #PercentPopulationVaccinated
+SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations, SUM(cast(v.new_vaccinations as int)) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS RollingPeopleVaccinated
+FROM [Portfolio Project]..CovidDeaths AS d
+JOIN [Portfolio Project]..CovidVaccinations AS v
+	ON d.location = v.location
+	and d.date = v.date
+WHERE d.continent IS NOT NULL
+-- ORDER BY 2,3
+
+SELECT *, (RollingPeopleVaccinated/population)*100 AS AccumulatedVaccinationRate
+FROM #PercentPopulationVaccinated
+
+-- Create view to store data for later visualization
+
+DROP VIEW IF EXISTS PercentPopulationVaccinatedView
+CREATE VIEW PercentPopulationVaccinatedView AS
+SELECT d.continent, d.location, d.date, d.population, v.new_vaccinations, SUM(cast(v.new_vaccinations as int)) OVER (PARTITION BY d.location ORDER BY d.location, d.date) AS RollingPeopleVaccinated
+FROM [Portfolio Project]..CovidDeaths AS d
+JOIN [Portfolio Project]..CovidVaccinations AS v
+	ON d.location = v.location
+	and d.date = v.date
+WHERE d.continent IS NOT NULL
+
+SELECT *
+FROM PercentPopulationVaccinatedView
